@@ -286,7 +286,10 @@ namespace NX {
 
         // Read in file
         std::ifstream file("/switch/NX-Activity-Log/importedData.json");
-        nlohmann::json json = nlohmann::json::parse(file);
+        nlohmann::json json = nlohmann::json::parse(file, nullptr, false);
+        if (json.is_discarded()) {
+            return ret;
+        }
         if (json["users"] == nullptr || json["importTimestamp"] == nullptr) {
             return ret;
         }
@@ -530,19 +533,24 @@ namespace NX {
         PdmPlayStatistics tmp;
         pdmqryQueryPlayStatisticsByApplicationIdAndUserAccountId(titleID, userID, false, &tmp);
         PlayStatistics * stats = new PlayStatistics;
-        if (tmp.first_timestamp_user != 0 && tmp.last_timestamp_user != 0) {
-            stats->firstPlayed = tmp.first_timestamp_user;
-            stats->lastPlayed = tmp.last_timestamp_user;
-        } else {
-            auto it = std::find_if(this->summaries.begin(), this->summaries.end(), [titleID](auto s){ return (s->titleID == titleID); });
-            if (it != this->summaries.end()) {
-                stats->firstPlayed = (*it)->firstPlayed;
-                stats->lastPlayed = (*it)->lastPlayed;
-            }
-        }
-
+        stats->firstPlayed = tmp.first_timestamp_user;
+        stats->lastPlayed = tmp.last_timestamp_user;
         stats->playtime = tmp.playtime / 1000 / 1000 / 1000; //the unit of playtime in PdmPlayStatistics is ns
         stats->launches = tmp.total_launches;
+
+        auto it = std::find_if(this->summaries.begin(), this->summaries.end(), [titleID](auto s){ return (s->titleID == titleID); });
+        if (it != this->summaries.end()) {
+            if ((*it)->playtime > stats->playtime) {
+                stats->playtime = (*it)->playtime;
+                stats->launches = (*it)->launches;
+                if ((*it)->firstPlayed < stats->firstPlayed || stats->firstPlayed == 0) {
+                    stats->firstPlayed = (*it)->firstPlayed;
+                }
+                if ((*it)->lastPlayed > stats->lastPlayed) {
+                    stats->lastPlayed = (*it)->lastPlayed;
+                }
+            }
+        }
         return stats;
     }
 
